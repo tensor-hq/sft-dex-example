@@ -4,15 +4,15 @@ import { buy, cancel, edit, getListings, list } from "./api-helpers";
 import { createTestMarket } from "./market";
 import { getKeypairs, getMarketConfig } from "./utils";
 
-// The base URL for the Tensor API.
+// The base URL for the Tensor devnet API.
 const API_BASE_URL = "http://api.devnet.tensordev.io/api/v1/sft/";
 
 async function main() {
   // We use this connection to set up some SPL mints to act as our base and quote tokens.
-  // For production use these will likely already exist.
+  // For production use these tokens will likely already exist.
   const connection = new Connection(
     "http://api.devnet.solana.com",
-    "confirmed"
+    "confirmed",
   );
 
   // Our AxiosInstance to interact with the Tensor API.
@@ -25,17 +25,18 @@ async function main() {
     },
   });
 
-  // Need the following keypairs funded with SOL for this example:
+  // Need the following keypairs funded with devnet SOL for this example:
   // - payer -- the account that will pay for the transactions
   // - maker -- provides liquidity by posting orders
   // - trader -- trades against the maker's orders
   // - marketAuthority -- the authority for the market, required to approve a seat for a new maker
+  // 1 SOL each should be enough for running this example.
 
   // Generate the keypairs or get them from somewhere: file, etc.
   // Devnet's airdrop function is heavily rate-limited so the keypairs need to be funded outside this script.
   const { payer, maker, trader, marketAuthority } = await getKeypairs();
 
-  // This setups a test market with a base token representing a SFT, and a quote token representing a SPL token
+  // This sets up a test market with a base token representing a SFT, and a quote token representing a SPL token
   // like USDC to be used as the pricing token.
   await createTestMarket({
     connection,
@@ -62,7 +63,7 @@ async function main() {
   };
 
   // Listing requires a price in ticks and the number of base lots to list.
-  // Each market has a designated tick size (quote lots per base unit) that is used to convert the price to ticks.
+  // Each market has a designated tick size that is used to convert the price to ticks.
   // A tick size of 0.01 and a price of 1.23 is converted to 123 ticks.
   const priceInTicks = 175; // $1.75 USDC
   const numBaseLots = 100; // Listing 100 SFTs for $1.75 each.
@@ -71,7 +72,10 @@ async function main() {
   await list({
     ...baseArgs,
     payer,
-    maker, // Maker must have a seat in the market to list.
+    // Maker must have a seat in the market to list.
+    // This is done in the createTestMarket set up code above, but currently must be done manually
+    // by the marketAuthority. We can look at using the Phoenix Seat Manager program to automate this.
+    maker,
     priceInTicks,
     numBaseLots,
   });
@@ -90,14 +94,6 @@ async function main() {
     amount: 10, // whole tokens
   });
 
-  // The maker can cancel their listing.
-  await cancel({
-    ...baseArgs,
-    payer,
-    maker,
-    orderSequenceNumber: 3, // The sequence number of the order to cancel.
-  });
-
   // The maker can update their listing.
   // Note: Phoenix supports reducing an existing listing order size, but not increasing it. Increasing the order size
   // using this handler cancels the existing order and creates a new one with the new size, resulting in a new order sequence number.
@@ -105,7 +101,15 @@ async function main() {
     ...baseArgs,
     maker,
     orderSequenceNumber: 1,
-    newNumBaseLots: 1000,
+    newNumBaseLots: 110, // increasing means a we have a new order sequence number
+  });
+
+  // The maker can cancel their listing.
+  await cancel({
+    ...baseArgs,
+    payer,
+    maker,
+    orderSequenceNumber: 2, // The sequence number of the order to cancel.
   });
 }
 
